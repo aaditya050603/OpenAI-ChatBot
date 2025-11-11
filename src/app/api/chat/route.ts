@@ -19,8 +19,13 @@ export async function POST(req: Request) {
     const user =
       (await prisma.user.findUnique({ where: { email: userId } })) ||
       (await prisma.user.create({
-        data: { email: userId, name: "Guest User" },
+        data: {
+          email: userId,
+          name: "Guest User",
+          password: "guest123",   // ✅ dummy placeholder password
+        },
       }));
+
 
     // 🧩 Find or create Chat linked to that user
     const chat =
