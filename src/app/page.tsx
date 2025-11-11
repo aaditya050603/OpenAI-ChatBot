@@ -1,35 +1,44 @@
 "use client";
-import { useSession, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
+
+import { useSession } from "next-auth/react";
 import ChatWindow from "@/components/ChatWindow";
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const router = useRouter();
 
-  if (status === "loading") return <p>Loading...</p>;
-  if (!session) {
-    router.push("/login");
-    return null;
+  // 🧩 Show loading screen while session is being fetched
+  if (status === "loading") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50">
+        <p className="text-gray-500">Loading session...</p>
+      </main>
+    );
   }
 
-  const userId = session.user.email; // use email for linking chats
+  // 🧩 If user is not logged in, continue as a guest (optional)
+  const userId = session?.user?.email ?? "guest@example.com";
 
+  // 🧩 Main chat window
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-2xl border rounded-xl shadow-md bg-white p-4">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold flex-1 text-center">
-            🤖 AI Chatbot (OpenAI + AstraDB)
-          </h1>
-          <button
-            onClick={() => signOut()}
-            className="text-sm text-blue-500 underline"
-          >
-            Logout
-          </button>
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <div className="w-full max-w-3xl">
+        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">
+          🤖 AI Chat Assistant
+        </h1>
         <ChatWindow userId={userId} />
+        {!session && (
+          <p className="text-center text-sm text-gray-500 mt-4">
+            You are chatting as a <span className="font-semibold">guest</span>.
+            <br />
+            <a
+              href="/login"
+              className="text-blue-600 hover:underline ml-1"
+            >
+              Log in
+            </a>{" "}
+            to save your chats.
+          </p>
+        )}
       </div>
     </main>
   );
