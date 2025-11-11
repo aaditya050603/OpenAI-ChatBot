@@ -10,31 +10,34 @@ export async function POST(req: Request) {
   try {
     const { message, chatId, userId } = await req.json();
 
+    // 🧩 Validate input
     if (!message || !userId)
-      return NextResponse.json({ error: "Missing message or userId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing message or userId" },
+        { status: 400 }
+      );
 
     console.log("🟢 Incoming message:", { message, chatId, userId });
 
-    // 🧩 Ensure User exists (email-based userId)
+    // 🧩 Ensure the user exists (use email as identifier)
     const user =
       (await prisma.user.findUnique({ where: { email: userId } })) ||
       (await prisma.user.create({
         data: {
           email: userId,
           name: "Guest User",
-          password: "guest123",   // ✅ dummy placeholder password
+          password: "guest123", // ✅ dummy password to satisfy Prisma
         },
       }));
 
-
-    // 🧩 Find or create Chat linked to that user
+    // 🧩 Find or create a chat for this user
     const chat =
       (chatId && (await prisma.chat.findUnique({ where: { id: chatId } }))) ||
       (await prisma.chat.create({
         data: { title: message.slice(0, 30), userId: user.id },
       }));
 
-    // 🧩 Generate embedding
+    // 🧩 Create embedding for the message
     const embeddingRes = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: message,
@@ -54,7 +57,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 🧩 Insert user message
+    // 🧩 Insert user message into AstraDB
     await collection.insertOne({
       _id: crypto.randomUUID(),
       chat_id: chat.id,
@@ -64,15 +67,22 @@ export async function POST(req: Request) {
       embedding,
     });
 
-    // 🧩 Find context
-    const results = await collection.find(null, {
-      sort: { $vector: { path: "embedding", similarity: "cosine", value: embedding } },
-      limit: 3,
-    });
+// 🧩 Retrieve similar messages for context
+// 🧩 Retrieve similar messages for context (AstraDB SDK v1.3+)
+    const cursor = await collection.find(
+      {},
+      {
+        sort: { $vector: embedding }, // ✅ simplified new syntax
+        limit: 3,
+      }
+    );
 
+    // Convert cursor to array safely
+    const results = await cursor.toArray();
     const context = results.map((r: any) => r.content).join("\n");
 
-    // 🧩 Generate AI reply
+
+// 🧩 Generate an AI reply using context
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -84,11 +94,12 @@ export async function POST(req: Request) {
 
     const reply = completion.choices[0].message.content ?? "";
 
-    // 🧩 Save reply in DB and Astra
+    // 🧩 Save reply in Prisma for relational history
     await prisma.message.create({
       data: { chatId: chat.id, role: "assistant", content: reply },
     });
 
+    // 🧩 Store assistant reply in AstraDB
     await collection.insertOne({
       _id: crypto.randomUUID(),
       chat_id: chat.id,
