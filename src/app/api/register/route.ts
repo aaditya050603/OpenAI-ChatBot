@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -7,38 +6,49 @@ const prisma = new PrismaClient();
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    console.log("🟢 Received registration data:", body);
+    const { name, email, password, confirmPassword } = await req.json();
 
-    const { name, email, password, confirmPassword } = body;
-
+    // ✅ Validation
     if (!name || !email || !password || !confirmPassword) {
-      return NextResponse.json({ error: "All fields are required." }, { status: 400 });
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     if (password !== confirmPassword) {
-      return NextResponse.json({ error: "Passwords do not match." }, { status: 400 });
+      return NextResponse.json({ error: "Passwords do not match" }, { status: 400 });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return NextResponse.json({ error: "User already exists." }, { status: 400 });
+    if (password.length < 6) {
+      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    console.log("🔐 Hashed password created successfully.");
-
-    const newUser = await prisma.user.create({
-      data: { name, email, password: hashedPassword },
+    // ✅ Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
     });
 
-    console.log("✅ User registered:", newUser.email);
-    return NextResponse.json({ message: "Registration successful!" }, { status: 201 });
-  } catch (error: any) {
-    console.error("❌ Registration error:", error);
-    return NextResponse.json(
-      { error: "Something went wrong: " + error.message },
-      { status: 500 }
-    );
+    if (existingUser) {
+      return NextResponse.json({ error: "Email already registered" }, { status: 409 });
+    }
+
+    // ✅ Hash password with bcrypt
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ✅ Create new user with hashed password
+    const newUser = await prisma.user.create({
+      data: {
+        email,
+        name,
+        password: hashedPassword,
+      },
+    });
+
+    console.log("✅ User registered successfully:", newUser.email);
+    return NextResponse.json({ 
+      message: "Registration successful", 
+      user: { id: newUser.id, email: newUser.email, name: newUser.name } 
+    }, { status: 201 });
+  } catch (err: any) {
+    console.error("❌ Register API Error:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
